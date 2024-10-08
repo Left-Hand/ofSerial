@@ -41,3 +41,7 @@ release/*
 
 # VS code
 .vscode/
+
+CMakeFiles
+CMakeCache.txt
+build

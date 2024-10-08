@@ -38,6 +38,9 @@
 
 #include <vector>
 #include <string>
+#include <string_view>
+#include <algorithm>
+#include <cstdint>
 
 // serial error codes
 #define OF_SERIAL_NO_DATA 	-2
@@ -56,7 +59,7 @@ class ofSerialDeviceInfo{
 		/// \param devicePathIn The path to the device.
 		/// \param deviceNameIn The name of the device.
 		/// \param deviceIDIn The ID of the device.
-		ofSerialDeviceInfo(std::string devicePathIn, std::string deviceNameIn, int deviceIDIn){
+		ofSerialDeviceInfo(const std::string_view devicePathIn,const std::string_view deviceNameIn, int deviceIDIn){
 			devicePath = devicePathIn;
 			deviceName = deviceNameIn;
 			deviceID = deviceIDIn;
@@ -165,7 +168,7 @@ public:
 	/// ofSerial mySerial;
 	/// mySerial.setup("COM4", 57600);
 	/// ~~~~
-	bool setup(std::string portName, int baudrate = 9600, int data = 8, int parity = OF_SERIAL_PARITY_N, int stop = 1);
+	bool setup(const std::string_view portName, int baudrate = 9600, int data = 8, int parity = OF_SERIAL_PARITY_N, int stop = 1);
 
 	/// \brief Opens the serial port based on the order in which is listed and
 	/// sets the baud rate.
@@ -283,11 +286,14 @@ public:
 	/// device.writeData(&buf_str[0], 3);
 	/// device.writeData(&buf_data[0], 2);
 	/// ~~~~
-	long writeData(const std::string& buffer);
+	long writeData(const std::string& buffer){
+		return writeData(buffer.data(), buffer.size());
+	}
+	long writeData(const std::string_view buffer);
 	bool writeData(const char singleByte);
-	bool writeData(const unsigned char singleByte);
-	long writeData(const char* buffer, size_t length);
-	long writeData(const unsigned char* buffer, size_t length);
+	bool writeData(const uint8_t singleByte);
+	long writeData(const char* buffer, const size_t length);
+	long writeData(const uint8_t * buffer, const size_t length);
 
 	/// \}
 	/// \name Clear Data
@@ -298,7 +304,7 @@ public:
 	/// Any data in the cleared buffers is discarded.
 	/// \param flushIn If true then it clears the incoming data buffer
 	/// \param flushOut If true then it clears the outgoing data buffer.
-	void flush(bool flushIn = true, bool flushOut = true);
+	void flush(const bool flushIn = true, const bool flushOut = true);
 
 	/// \brief Drain is only available on OSX and Linux and is very similar to
 	/// flush(), but blocks until all the data has been written to or read
@@ -307,6 +313,14 @@ public:
 
 	/// \}
 
+	bool isBuadLegal(const int baud) const {
+		return (std::find(supportedBauds.begin(), supportedBauds.end(), baud)
+				!= supportedBauds.end());
+	}
+
+	void addLegalBaud(const int baud){
+		supportedBauds.push_back(baud);
+	}
 protected:
 	/// \brief Enumerate all devices attached to a serial port.
 	///
@@ -318,6 +332,23 @@ protected:
 
 	std::string deviceType;  ///\< \brief Name of the device on the other end of the serial connection.
 	std::vector <ofSerialDeviceInfo> devices;  ///\< This vector stores information about all serial devices found.
+
+	std::vector <int> supportedBauds = {
+		300, 
+		1200, 
+		2400, 
+		4800,
+		9600,
+		14400, 
+		19200,
+		28800, 
+		38400,
+		57600,
+		115200,
+		230400,
+		12000000
+	};
+	
 	bool bHaveEnumeratedDevices;  ///\< \brief Indicate having enumerated devices (serial ports) available.
 	bool bInited = false;;  ///\< \brief Indicate the successful initialization of the serial connection.
 

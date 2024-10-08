@@ -40,11 +40,15 @@
 
 #include <iostream>
 #include <sstream>
+#include <string_view>
+#include <cstdint>
+
 using std::vector;
 using std::string;
 
 #ifdef TARGET_WIN32
 
+#include "time.h"
 // needed for serial bus enumeration:
 // 4d36e978-e325-11ce-bfc1-08002be10318}
 DEFINE_GUID (GUID_SERENUM_BUS_ENUMERATOR, 0x4D36E978, 0xE325,
@@ -65,7 +69,7 @@ void ofSerial::enumerateWin32Ports(){
 	hDevInfo = SetupDiGetClassDevs((struct _GUID *)&GUID_SERENUM_BUS_ENUMERATOR, 0, 0, DIGCF_PRESENT);
 	if(hDevInfo){
 		int i = 0;
-		unsigned char dataBuf[MAX_PATH + 1];
+		uint8_t dataBuf[MAX_PATH + 1];
 		while(TRUE){
 			ZeroMemory(&DeviceInterfaceData, sizeof(DeviceInterfaceData));
 			DeviceInterfaceData.cbSize = sizeof(DeviceInterfaceData);
@@ -301,7 +305,7 @@ bool ofSerial::setup(int deviceNumber, int baud, int data, int parity, int stop)
 }
 
 //----------------------------------------------------------------
-bool ofSerial::setup(string portName, int baud, int data, int parity, int stop) {
+bool ofSerial::setup(const std::string_view portName, int baud, int data, int parity, int stop) {
 	bInited = false;
 
 	#if defined( TARGET_OSX ) || defined( TARGET_LINUX )
@@ -470,11 +474,11 @@ bool ofSerial::setup(string portName, int baud, int data, int parity, int stop) 
 	#elif defined(TARGET_WIN32)
 		std::vector<char> pn(portName.size() + 10, '\0');
 		int num;
-		if (sscanf_s(portName.c_str(), "COM%d", &num) == 1) {
+		if (sscanf_s(portName.data(), "COM%d", &num) == 1) {
 			snprintf(pn.data(), pn.size(), "\\\\.\\COM%d", num);
 		}
 		else {
-			strncpy_s(pn.data(), pn.size(), portName.c_str(), _TRUNCATE);
+			strncpy_s(pn.data(), pn.size(), portName.data(), _TRUNCATE);
 		}
 
 		hComm = CreateFile(pn.data(), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
@@ -491,22 +495,17 @@ bool ofSerial::setup(string portName, int baud, int data, int parity, int stop) 
 			return false;
 		}
 
-		int l_baud = CBR_9600;
+		int l_baud = this->isBuadLegal(baud) ? baud : 9600;
 		int l_data = 8;
 		int l_stop = ONESTOPBIT;
 		char l_parity = NOPARITY;
-		switch (baud) {
-		case 300: case 1200: case 2400: case 4800: case 9600:
-		case 14400: case 19200: case 28800: case 38400:
-		case 57600: case 115200: case 230400: case 12000000:
-			l_baud = baud;
-			break;
-		}
+
 		switch (data) {
 		case 5: case 6: case 7:
 			l_data = data;
 			break;
 		}
+		
 		switch (parity) {
 		case OF_SERIAL_PARITY_E:
 			l_parity = EVENPARITY; // Even parity
@@ -515,6 +514,7 @@ bool ofSerial::setup(string portName, int baud, int data, int parity, int stop) 
 			l_parity = ODDPARITY; // Odd parity
 			break;
 		}
+		
 		switch (stop) {
 		case 2:
 			l_stop = TWOSTOPBITS; // Two stop bit used in communication
@@ -525,6 +525,7 @@ bool ofSerial::setup(string portName, int baud, int data, int parity, int stop) 
 		dcbSerialParams.ByteSize = l_data;
 		dcbSerialParams.StopBits = l_stop;
 		dcbSerialParams.Parity = l_parity;
+		
 		if (!SetCommState(hComm, &dcbSerialParams)) {
 			std::cerr << "Erreur à la configuration du port COM" << std::endl;
 			close();
@@ -568,26 +569,26 @@ bool ofSerial::setup(string portName, int baud, int data, int parity, int stop) 
 
 //----------------------------------------------------------------
 bool ofSerial::writeData(const char singleByte) {
-	return writeData((const unsigned char)singleByte);
+	return writeData((const uint8_t)singleByte);
 }
 
 //----------------------------------------------------------------
-bool ofSerial::writeData(const unsigned char singleByte) {
+bool ofSerial::writeData(const uint8_t singleByte) {
 	return writeData(&singleByte, 1) > 0;
 }
 
 //----------------------------------------------------------------
 long ofSerial::writeData(const char* buffer, size_t length) {
-	return writeData((const unsigned char*)buffer, length);
+	return writeData((const uint8_t*)buffer, length);
 }
 
 //----------------------------------------------------------------
-long ofSerial::writeData(const std::string& buffer) {
-	return writeData((const unsigned char*)buffer.c_str(), buffer.size());
+long ofSerial::writeData(const std::string_view buffer) {
+	return writeData((const uint8_t*)buffer.data(), buffer.size());
 }
 
 //----------------------------------------------------------------
-long ofSerial::writeData(const unsigned char* buffer, size_t length) {
+long ofSerial::writeData(const uint8_t* buffer, size_t length) {
 	if(!bInited){
 		std::cerr << "writeData(): serial not inited" << std::endl;
 		return OF_SERIAL_ERROR;
@@ -671,7 +672,7 @@ std::string ofSerial::readStringUntil(const char delimiter, const int timeout) {
 }
 
 //----------------------------------------------------------------
-long ofSerial::readData(unsigned char* buffer, size_t length){
+long ofSerial::readData(uint8_t* buffer, size_t length){
 	if (!bInited){
 		std::cerr << "readData(): serial not inited" << std::endl;
 		return OF_SERIAL_ERROR;
@@ -722,17 +723,13 @@ long ofSerial::readData(unsigned char* buffer, size_t length){
 
 //----------------------------------------------------------------
 long ofSerial::readData(char* buffer, size_t length){
-	return readData(reinterpret_cast<unsigned char*>(buffer), length);
+	return readData(reinterpret_cast<uint8_t*>(buffer), length);
 }
 
 //----------------------------------------------------------------
 long ofSerial::readData(std::string& buffer, size_t length) {
-	char* tmpBuffer = new char[length + 1];
-	memset(tmpBuffer, 0, sizeof(char) * (length + 1));
-	const auto& nBytes = readData(tmpBuffer, length);
-	//tmpBuffer[nBytes] = '\0';
-	buffer = std::string(tmpBuffer);
-	delete[] tmpBuffer;
+	buffer.reserve(length + 1);
+	const auto nBytes = readData(buffer.data(), length);
 	return nBytes;
 }
 
@@ -743,7 +740,7 @@ int ofSerial::readData(){
 		return OF_SERIAL_ERROR;
 	}
 
-	unsigned char tmpByte = 0;
+	uint8_t tmpByte = 0;
 
 	#if defined( TARGET_OSX ) || defined( TARGET_LINUX )
 

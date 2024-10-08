@@ -15,10 +15,10 @@ int main(int argc, char* argv[]) {
 	// Check and get params 
 	ofSerial l_serial;
 	if (argc < 3) {
-		cout << "Usage: serial <port> <baudrate>" << endl << endl;
-		cout << "List of serial ports detected:" << endl;
+		std::cout << "Usage: serial <port> <baudrate>" << std::endl << std::endl;
+		std::cout << "List of serial ports detected:" << std::endl;
 		for (auto& l_port : l_serial.getDeviceList()) {
-			cout << "\t- " << l_port.getDeviceName() << endl;
+			std::cout << "\t- " << l_port.getDeviceName() << std::endl;
 		}
 		return EXIT_FAILURE;
 	}
@@ -28,20 +28,20 @@ int main(int argc, char* argv[]) {
 	// Setup and connect serial
 	bool l_connected = l_serial.setup(l_port, l_baudrate);
 	if (l_connected) {
-		cout << "CONNECTED" << endl;
+		std::cout << "CONNECTED" << std::endl;
 	} else {
-		cerr << "NOT CONNECTED" << endl;
+		std::cerr << "NOT CONNECTED" << std::endl;
 		return EXIT_FAILURE;
 	}
 
 	// While is running
-	string l_bytes_to_process;
-	cout << endl;
+	std::string l_bytes_to_process;
+	std::cout << std::endl;
 	while (true) {
 
 		// Get and send data
-		string l_input;
-		cout << "SEND DATA (EXIT to quit): ";
+		std::string l_input;
+		std::cout << "SEND DATA ([EXIT] to quit): ";
 		getline(cin, l_input); 
 		if (l_input == "") {
 			continue;
@@ -60,22 +60,22 @@ int main(int argc, char* argv[]) {
 		int l_bytes_to_read = l_serial.available();
 	
 		// Print number of bytes 
-		cout << endl << "RECEIVED " << dec << l_bytes_to_read << " BYTES" << endl;
+		std::cout << std::endl << "RECEIVED " << std::dec << l_bytes_to_read << " BYTES" << std::endl;
 		int l_bytes_read = l_serial.readData(l_bytes_to_process, l_bytes_to_read);
 
 		// Print hexa data
-		cout << hex << uppercase;
+		std::cout << hex << uppercase;
 		const char* l_c_str = l_bytes_to_process.c_str();
 		for (int i = 0; i < l_bytes_read; ++i) {
-			cout << static_cast<unsigned short>(l_c_str[i] & 0x00FF) << " ";
+			std::cout << static_cast<unsigned short>(l_c_str[i] & 0x00FF) << " ";
 		}
 
-		// Print string data 
-		cout << dec << "-> " << l_bytes_to_process << endl << endl;
+		// Print std::string data 
+		std::cout << std::dec << "-> " << l_bytes_to_process << std::endl << std::endl;
 	}
 
 	// Close and return
 	l_serial.close();
-	cout << "CLOSED" << endl;
+	std::cout << "CLOSED" << std::endl;
 	return EXIT_SUCCESS;
 }
