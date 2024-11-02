@@ -7,8 +7,6 @@
 #include <iostream>
 #include <thread>
 
-using namespace std;
-
 // ofSerial standalone example
 int main(int argc, char* argv[]) {
 
@@ -17,61 +15,70 @@ int main(int argc, char* argv[]) {
 	if (argc < 3) {
 		std::cout << "Usage: serial <port> <baudrate>" << std::endl << std::endl;
 		std::cout << "List of serial ports detected:" << std::endl;
-		for (auto& l_port : l_serial.getDeviceList()) {
+		for (const auto& l_port : l_serial.getDeviceList()) {
 			std::cout << "\t- " << l_port.getDeviceName() << std::endl;
 		}
+		std::cout << "EXIT" << std::endl;
 		return EXIT_FAILURE;
 	}
 	char* l_port = argv[1];
-	int l_baudrate = atoi(argv[2]);
-
+	const auto l_baudrate = size_t(atoi(argv[2]));
+	std::cout << "attemp to connect" << l_port << ',' << l_baudrate << std::endl;
 	// Setup and connect serial
-	bool l_connected = l_serial.setup(l_port, l_baudrate);
+	bool l_connected = l_serial.setup(std::string_view(l_port), l_baudrate);
 	if (l_connected) {
 		std::cout << "CONNECTED" << std::endl;
 	} else {
-		std::cerr << "NOT CONNECTED" << std::endl;
+		std::cout << "NOT CONNECTED" << std::endl;
 		return EXIT_FAILURE;
 	}
 
-	// While is running
-	std::string l_bytes_to_process;
 	std::cout << std::endl;
 	while (true) {
 
 		// Get and send data
-		std::string l_input;
-		std::cout << "SEND DATA ([EXIT] to quit): ";
-		getline(cin, l_input); 
-		if (l_input == "") {
-			continue;
-		} else if (l_input == "EXIT") {
-			break;
-		}
-		l_input += "\n";
-		l_serial.writeData(l_input);
+		// std::string l_input;
+		// std::cout << "SEND DATA (EXIT to quit): ";
+		// std::getline(std::cin, l_input); 
+		// if (l_input == "") {
+		// 	continue;
+		// } else if (l_input == "EXIT") {
+		// 	break;
+		// }
+		// l_serial.flush(true, true);
+		// l_serial.writeData(l_input);
 
 		// Wait the answer
-		while (!l_serial.available()) {
-			this_thread::sleep_for(chrono::milliseconds(100));
+		while(!l_serial.available()) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		}
 
 		// Check if there is data to read
 		int l_bytes_to_read = l_serial.available();
 	
-		// Print number of bytes 
-		std::cout << std::endl << "RECEIVED " << std::dec << l_bytes_to_read << " BYTES" << std::endl;
-		int l_bytes_read = l_serial.readData(l_bytes_to_process, l_bytes_to_read);
+		// // Print number of bytes 
+		// std::cout << std::endl << "RECEIVED " << std::dec << l_bytes_to_read << " BYTES" << std::endl;
+		// int l_bytes_read = l_serial.readData(l_bytes_to_process, l_bytes_to_read);
+		auto bytes = l_serial.readBytes();
+		{
+			auto print_hex = [](const uint8_t chr){
 
-		// Print hexa data
-		std::cout << hex << uppercase;
-		const char* l_c_str = l_bytes_to_process.c_str();
-		for (int i = 0; i < l_bytes_read; ++i) {
-			std::cout << static_cast<unsigned short>(l_c_str[i] & 0x00FF) << " ";
+				if(chr < 0x10){
+					std::cout << '0';
+				}
+				std::cout << +chr;
+			};
+
+			// Print hexa data
+			std::cout << "bytes:" << std::oct << bytes.size(); 
+			std::cout << "str:" << std::string(bytes.begin(), bytes.end()); 
+			std::cout << std::endl << std::hex << std::uppercase << '[';
+			for (auto it = bytes.cbegin(); it != bytes.cend(); ++it) {
+				print_hex(*it);
+				if(it != std::prev(bytes.cend())) std::cout << ',';
+			}
+			std::cout << ']' << std::endl;
 		}
-
-		// Print std::string data 
-		std::cout << std::dec << "-> " << l_bytes_to_process << std::endl << std::endl;
 	}
 
 	// Close and return

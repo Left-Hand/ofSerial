@@ -19,6 +19,11 @@
 
 #pragma once
 
+
+#include <cstdint>
+#include <ctime>
+#include <algorithm>
+
 #if defined( __WIN32__ ) || defined( _WIN32 )
 	#define TARGET_WIN32
 #elif defined( __APPLE_CC__)
@@ -31,20 +36,13 @@
 	#include <termios.h>
 #else
 	#include <Windows.h>
-	#pragma comment (lib, "Setupapi.lib")
 	#include <setupapi.h>
 	#define MAX_SERIAL_PORTS 256
 #endif
 
 #include <vector>
 #include <string>
-#include <string_view>
-#include <algorithm>
-#include <cstdint>
 
-// serial error codes
-#define OF_SERIAL_NO_DATA 	-2
-#define OF_SERIAL_ERROR		-1
 
 #define OF_SERIAL_PARITY_N	0
 #define OF_SERIAL_PARITY_O	1
@@ -59,7 +57,7 @@ class ofSerialDeviceInfo{
 		/// \param devicePathIn The path to the device.
 		/// \param deviceNameIn The name of the device.
 		/// \param deviceIDIn The ID of the device.
-		ofSerialDeviceInfo(const std::string_view devicePathIn,const std::string_view deviceNameIn, int deviceIDIn){
+		ofSerialDeviceInfo(std::string devicePathIn, std::string deviceNameIn, int deviceIDIn){
 			devicePath = devicePathIn;
 			deviceName = deviceNameIn;
 			deviceID = deviceIDIn;
@@ -76,7 +74,7 @@ class ofSerialDeviceInfo{
 		/// Example: `/dev/tty.cu/usbdevice-a440`.
 		///
 		/// \returns the device path.
-		std::string getDevicePath(){
+		std::string getDevicePath() const{
 			return devicePath;
 		}
 
@@ -85,7 +83,7 @@ class ofSerialDeviceInfo{
 		/// Example: `usbdevice-a440` or `COM4`.
 		///
 		/// \returns the device name.
-		std::string getDeviceName(){
+		std::string getDeviceName() const{
 			return deviceName;
 		}
 
@@ -94,7 +92,7 @@ class ofSerialDeviceInfo{
 		/// Example: `0`,`1`,`2`,`3` etc.
 		///
 		/// \returns the device ID.
-		int getDeviceID(){
+		int getDeviceID() const{
 			return deviceID;
 		}
 
@@ -168,7 +166,10 @@ public:
 	/// ofSerial mySerial;
 	/// mySerial.setup("COM4", 57600);
 	/// ~~~~
-	bool setup(const std::string_view portName, int baudrate = 9600, int data = 8, int parity = OF_SERIAL_PARITY_N, int stop = 1);
+	bool setup(const std::string_view portName, size_t baudrate = 9600, size_t data = 8, size_t parity = OF_SERIAL_PARITY_N, size_t stop = 1);
+	bool setup(const std::string portName, size_t baudrate = 9600, size_t data = 8, size_t parity = OF_SERIAL_PARITY_N, size_t stop = 1){
+		return setup(std::string_view(portName), baudrate, data, parity, stop);
+	}
 
 	/// \brief Opens the serial port based on the order in which is listed and
 	/// sets the baud rate.
@@ -178,7 +179,14 @@ public:
 	/// ofSerial mySerial;
 	/// mySerial.setup(0, 9600);
 	/// ~~~~
-	bool setup(int deviceNumber = 0, int baudrate = 9600, int data = 8, int parity = OF_SERIAL_PARITY_N, int stop = 1);
+	bool setup(size_t deviceNumber = 0, size_t baudrate = 9600, size_t data = 8, size_t parity = OF_SERIAL_PARITY_N, size_t stop = 1){
+		buildDeviceList();
+		if(deviceNumber < (int)devices.size()){
+			return setup(devices[deviceNumber].devicePath, baudrate, data, parity, stop);
+		} else {
+			return false;
+		}
+	}
 
 	bool isInitialized() const;
 
@@ -199,9 +207,9 @@ public:
 	/// }
 	/// ~~~~
 	///
-	/// This is useful when you know how long a complete message from a device
+	/// This is useful when you know how size_t a complete message from a device
 	/// is going to be.
-	int available();
+	size_t available();
 
 	/// \brief Reads 'length' bytes from the connected serial device.
 	///
@@ -264,10 +272,10 @@ public:
 	/// trying to receieve ints or signed chars over a serial connection you'll
 	/// need to do some bit manipulation to correctly interpret that values.
 	std::string readStringUntil(const char delimiter, const int timeout = 1000);
-	long readData(unsigned char* buffer, size_t length);
-	long readData(char* buffer, size_t length);
-	long readData(std::string& buffer, size_t length);
-	int readData();
+	size_t readBytes(uint8_t* buffer, size_t length);
+	size_t readStr(std::string& buffer, size_t length);
+	int readByte();
+	std::vector<uint8_t> readBytes();
 
 	/// \}
 	/// \name writeData Data
@@ -286,14 +294,11 @@ public:
 	/// device.writeData(&buf_str[0], 3);
 	/// device.writeData(&buf_data[0], 2);
 	/// ~~~~
-	long writeData(const std::string& buffer){
-		return writeData(buffer.data(), buffer.size());
-	}
-	long writeData(const std::string_view buffer);
-	bool writeData(const char singleByte);
-	bool writeData(const uint8_t singleByte);
-	long writeData(const char* buffer, const size_t length);
-	long writeData(const uint8_t * buffer, const size_t length);
+	size_t writeBytes(const std::string& str){return writeBytes(str.c_str(), str.length());}
+	size_t writeBytes(const std::string_view str){return writeBytes(str.data(), str.length());}
+	bool writeBytes(const char singleByte){return writeBytes(&singleByte, 1);}
+	size_t writeBytes(const char* buffer, size_t length){return writeBytes(reinterpret_cast<const uint8_t *>(buffer), length);}
+	size_t writeBytes(const uint8_t * buffer, size_t length);
 
 	/// \}
 	/// \name Clear Data
@@ -304,7 +309,7 @@ public:
 	/// Any data in the cleared buffers is discarded.
 	/// \param flushIn If true then it clears the incoming data buffer
 	/// \param flushOut If true then it clears the outgoing data buffer.
-	void flush(const bool flushIn = true, const bool flushOut = true);
+	void flush(bool flushIn = true, bool flushOut = true);
 
 	/// \brief Drain is only available on OSX and Linux and is very similar to
 	/// flush(), but blocks until all the data has been written to or read

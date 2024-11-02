@@ -19,6 +19,7 @@
 
 #include "ofSerial.h"
 
+
 #if defined( TARGET_OSX )
 	#include <getopt.h>
 #endif
@@ -40,15 +41,11 @@
 
 #include <iostream>
 #include <sstream>
-#include <string_view>
-#include <cstdint>
-
 using std::vector;
 using std::string;
 
 #ifdef TARGET_WIN32
 
-#include "time.h"
 // needed for serial bus enumeration:
 // 4d36e978-e325-11ce-bfc1-08002be10318}
 DEFINE_GUID (GUID_SERENUM_BUS_ENUMERATOR, 0x4D36E978, 0xE325,
@@ -73,7 +70,7 @@ void ofSerial::enumerateWin32Ports(){
 		while(TRUE){
 			ZeroMemory(&DeviceInterfaceData, sizeof(DeviceInterfaceData));
 			DeviceInterfaceData.cbSize = sizeof(DeviceInterfaceData);
-			if(!SetupDiEnumDeviceInfo(hDevInfo, i, &DeviceInterfaceData)){
+			if(!SetupDiEnumDeviceInfo(hDevInfo, DWORD(i), &DeviceInterfaceData)){
 				// SetupDiEnumDeviceInfo failed
 				break;
 			}
@@ -125,6 +122,7 @@ ofSerial::ofSerial(){
 
 		nPorts = 0;
 		bPortsEnumerated = false;
+		hComm = nullptr;
 		oldTimeout = { 0 };
 		portNamesShort = new char * [MAX_SERIAL_PORTS];
 		portNamesFriendly = new char * [MAX_SERIAL_PORTS];
@@ -212,7 +210,7 @@ void ofSerial::buildDeviceList() {
 
 				//we go through the prefixes
 				for(auto & prefix: prefixMatch){
-					//if the device name is longer than the prefix
+					//if the device name is size_ter than the prefix
 					if(deviceName.size() > prefix.size()){
 						//do they match ?
 						if(deviceName.substr(0, prefix.size()) == prefix.c_str()){
@@ -293,19 +291,7 @@ void ofSerial::close(){
 }
 
 //----------------------------------------------------------------
-bool ofSerial::setup(int deviceNumber, int baud, int data, int parity, int stop) {
-	buildDeviceList();
-	if(deviceNumber < (int)devices.size()){
-		return setup(devices[deviceNumber].devicePath, baud, data, parity, stop);
-	} else {
-		std::cerr << "Couldn't find device " << deviceNumber << ", only " << devices.size() << " devices found" << std::endl;
-		return false;
-	}
-
-}
-
-//----------------------------------------------------------------
-bool ofSerial::setup(const std::string_view portName, int baud, int data, int parity, int stop) {
+bool ofSerial::setup(const std::string_view portName, size_t baud, size_t data, size_t parity, size_t stop) {
 	bInited = false;
 
 	#if defined( TARGET_OSX ) || defined( TARGET_LINUX )
@@ -495,10 +481,10 @@ bool ofSerial::setup(const std::string_view portName, int baud, int data, int pa
 			return false;
 		}
 
-		int l_baud = this->isBuadLegal(baud) ? baud : 9600;
-		int l_data = 8;
-		int l_stop = ONESTOPBIT;
-		char l_parity = NOPARITY;
+		size_t l_baud = this->isBuadLegal(baud) ? baud : 9600;
+		size_t l_data = 8;
+		size_t l_stop = ONESTOPBIT;
+		size_t l_parity = NOPARITY;
 
 		switch (data) {
 		case 5: case 6: case 7:
@@ -507,25 +493,24 @@ bool ofSerial::setup(const std::string_view portName, int baud, int data, int pa
 		}
 		
 		switch (parity) {
-		case OF_SERIAL_PARITY_E:
+			case OF_SERIAL_PARITY_E:
 			l_parity = EVENPARITY; // Even parity
-			break;
-		case OF_SERIAL_PARITY_O:
+				break;
+			case OF_SERIAL_PARITY_O:
 			l_parity = ODDPARITY; // Odd parity
-			break;
+				break;
 		}
-		
 		switch (stop) {
-		case 2:
-			l_stop = TWOSTOPBITS; // Two stop bit used in communication
-			break;
+			case 2:
+				l_stop = TWOSTOPBITS; // Two stop bit used in communication
+				break;
 		}
 
 		dcbSerialParams.BaudRate = l_baud;
 		dcbSerialParams.ByteSize = l_data;
 		dcbSerialParams.StopBits = l_stop;
 		dcbSerialParams.Parity = l_parity;
-		
+
 		if (!SetCommState(hComm, &dcbSerialParams)) {
 			std::cerr << "Erreur à la configuration du port COM" << std::endl;
 			close();
@@ -556,9 +541,10 @@ bool ofSerial::setup(const std::string_view portName, int baud, int data, int pa
 			close();
 			return false;
 		}
-
+		
 		bInited = true;
 		return true;
+
 	#else
 
 		std::cerr << "Not implemented in this platform" << std::endl;
@@ -568,30 +554,10 @@ bool ofSerial::setup(const std::string_view portName, int baud, int data, int pa
 }
 
 //----------------------------------------------------------------
-bool ofSerial::writeData(const char singleByte) {
-	return writeData((const uint8_t)singleByte);
-}
-
-//----------------------------------------------------------------
-bool ofSerial::writeData(const uint8_t singleByte) {
-	return writeData(&singleByte, 1) > 0;
-}
-
-//----------------------------------------------------------------
-long ofSerial::writeData(const char* buffer, size_t length) {
-	return writeData((const uint8_t*)buffer, length);
-}
-
-//----------------------------------------------------------------
-long ofSerial::writeData(const std::string_view buffer) {
-	return writeData((const uint8_t*)buffer.data(), buffer.size());
-}
-
-//----------------------------------------------------------------
-long ofSerial::writeData(const uint8_t* buffer, size_t length) {
+size_t ofSerial::writeBytes(const uint8_t * buffer, size_t length) {
 	if(!bInited){
 		std::cerr << "writeData(): serial not inited" << std::endl;
-		return OF_SERIAL_ERROR;
+		return 0;
 	}
 
 	#if defined( TARGET_OSX ) || defined( TARGET_LINUX )
@@ -602,7 +568,7 @@ long ofSerial::writeData(const uint8_t* buffer, size_t length) {
 		while (written < length) {
 			auto n = write(fd, buffer + written, length - written);
 			if (n < 0 && (errno == EAGAIN || errno == EINTR)) n = 0;
-			if (n < 0) return OF_SERIAL_ERROR;
+			if (n < 0) return 0;
 			if (n > 0) {
 				written += n;
 			} else {
@@ -612,33 +578,29 @@ long ofSerial::writeData(const uint8_t* buffer, size_t length) {
 				FD_SET(fd, &wfds);
 				n = select(fd+1, NULL, &wfds, NULL, &tv);
 				if (n < 0 && errno == EINTR) n = 1;
-				if (n <= 0) return OF_SERIAL_ERROR;
+				if (n <= 0) return 0;
 			}
 		}
 		return written;
 	#elif defined(TARGET_WIN32)
 
 		DWORD written;
-		/*if(!WriteFile(hComm, buffer, length, &written,0)){
-			 std::cerr << "writeData(): couldn't write to port" << std::endl;
-			 return OF_SERIAL_ERROR;
-		}*/
 
 		if (!WriteFile(hComm, buffer, length, &written, &osWriter)) {
 			if (GetLastError() != ERROR_IO_PENDING) {
 				std::cerr << "writeData(): couldn't write to port" << std::endl;
-				return OF_SERIAL_ERROR;
+				return 0;
 			}
 
 			DWORD waitRes = WaitForSingleObject(osWriter.hEvent, INFINITE);
 			if (waitRes == WAIT_OBJECT_0) {
 				if (!GetOverlappedResult(hComm, &osWriter, &written, FALSE)) {
 					std::cerr << "writeData(): GetOverlappedResult error during write" << std::endl;
-					return OF_SERIAL_ERROR;
-				}
+					return 0;
+		}
 			} else {
 				std::cerr << "writeData(): WaitForSingleObject error during write" << std::endl;
-				return OF_SERIAL_ERROR;
+				return 0;
 			}
 		}
 		return (int)written;
@@ -660,7 +622,7 @@ std::string ofSerial::readStringUntil(const char delimiter, const int timeout) {
 		}
 		if (available()) {
 			while (available()) {
-				char l_byte = readData();
+				char l_byte = readByte();
 				if (l_byte == delimiter) {
 					return l_data.str();
 				}
@@ -671,11 +633,20 @@ std::string ofSerial::readStringUntil(const char delimiter, const int timeout) {
 	return l_data.str();
 }
 
+std::vector<uint8_t> ofSerial::readBytes(){
+	const size_t ava = available();
+	if(ava == 0) return {};
+	std::vector<uint8_t> bytes;
+	bytes.resize(ava);
+	readBytes(bytes.data(), ava);
+	return bytes;
+}
+
 //----------------------------------------------------------------
-long ofSerial::readData(uint8_t* buffer, size_t length){
+size_t ofSerial::readBytes(uint8_t * buffer, size_t length){
 	if (!bInited){
 		std::cerr << "readData(): serial not inited" << std::endl;
-		return OF_SERIAL_ERROR;
+		return 0;
 	}
 
 	#if defined( TARGET_OSX ) || defined( TARGET_LINUX )
@@ -685,22 +656,19 @@ long ofSerial::readData(uint8_t* buffer, size_t length){
 			if ( errno == EAGAIN )
 				return OF_SERIAL_NO_DATA;
 			std::cerr << "readData(): couldn't read from port: " << errno << " " << strerror(errno) << std::endl;
-			return OF_SERIAL_ERROR;
+			return 0;
 		}
 		return nRead;
 
 	#elif defined( TARGET_WIN32 )
 
 		DWORD nRead = 0;
-		/*if (!ReadFile(hComm, buffer, length, &nRead, 0)) {
-			std::cerr << "readData(): couldn't read from port" << std::endl;
-			return OF_SERIAL_ERROR;
-		}*/
+
 
 		if (!ReadFile(hComm, buffer, length, &nRead, &osReader)) {
 			if (GetLastError() != ERROR_IO_PENDING) {
 				std::cerr << "readData(): couldn't read from port" << std::endl;
-				return OF_SERIAL_ERROR;
+				return 0;
 			} else {
 				WaitForSingleObject(osReader.hEvent, INFINITE);
 				if (GetOverlappedResult(hComm, &osReader, &nRead, FALSE)) {
@@ -721,26 +689,23 @@ long ofSerial::readData(uint8_t* buffer, size_t length){
 	#endif
 }
 
-//----------------------------------------------------------------
-long ofSerial::readData(char* buffer, size_t length){
-	return readData(reinterpret_cast<uint8_t*>(buffer), length);
-}
 
 //----------------------------------------------------------------
-long ofSerial::readData(std::string& buffer, size_t length) {
-	buffer.reserve(length + 1);
-	const auto nBytes = readData(buffer.data(), length);
+size_t ofSerial::readStr(std::string& buffer, size_t length) {
+	std::string str;
+	str.reserve(length + 1);
+	const auto nBytes = readBytes(reinterpret_cast<uint8_t *>(str.data()), length);
 	return nBytes;
 }
 
 //----------------------------------------------------------------
-int ofSerial::readData(){
+int ofSerial::readByte(){
 	if(!bInited){
 		std::cerr << "readData(): serial not inited" << std::endl;
-		return OF_SERIAL_ERROR;
+		return 0;
 	}
 
-	uint8_t tmpByte = 0;
+	unsigned char tmpByte = 0;
 
 	#if defined( TARGET_OSX ) || defined( TARGET_LINUX )
 
@@ -750,7 +715,7 @@ int ofSerial::readData(){
 				return OF_SERIAL_NO_DATA;
 			}
 			std::cerr << "readData(): couldn't read from port: " << errno << " " << strerror(errno) << std::endl;
-			return OF_SERIAL_ERROR;
+			return 0;
 		}
 
 		if(nRead == 0){
@@ -760,15 +725,11 @@ int ofSerial::readData(){
 	#elif defined( TARGET_WIN32 )
 
 		DWORD nRead;
-		/*if (!ReadFile(hComm, &tmpByte, 1, &nRead, 0)) {
-			std::cerr << "readData(): couldn't read from port" << std::endl;
-			return OF_SERIAL_ERROR;
-		}*/
 
 		if (!ReadFile(hComm, &tmpByte, 1, &nRead, &osReader)) {
 			if (GetLastError() != ERROR_IO_PENDING) {
 				std::cerr << "readData(): couldn't read from port" << std::endl;
-				return OF_SERIAL_ERROR;
+				return 0;
 			} else {
 				WaitForSingleObject(osReader.hEvent, INFINITE);
 				GetOverlappedResult(hComm, &osReader, &nRead, FALSE);
@@ -776,13 +737,13 @@ int ofSerial::readData(){
 		}
 	
 		if(nRead == 0){
-			return OF_SERIAL_NO_DATA;
+			return 0;
 		}
 
 	#else
 
 		std::cerr << "Not defined in this platform" << std::endl;
-		return OF_SERIAL_ERROR;
+		return 0;
 
 	#endif
 
@@ -807,7 +768,7 @@ void ofSerial::flush(bool flushIn, bool flushOut){
 		tcflush(fd, flushType);
 	#elif defined( TARGET_WIN32 )
 
-		int flushType = 0;
+		size_t flushType = 0;
 		if(flushIn && flushOut) flushType = PURGE_TXCLEAR | PURGE_RXCLEAR;
 		else if(flushIn) flushType = PURGE_RXCLEAR;
 		else if(flushOut) flushType = PURGE_TXCLEAR;
@@ -832,13 +793,13 @@ void ofSerial::drain(){
 }
 
 //-------------------------------------------------------------
-int ofSerial::available(){
+size_t ofSerial::available(){
 	if(!bInited){
 		std::cerr << "available(): serial not inited" << std::endl;
-		return OF_SERIAL_ERROR;
+		return 0;
 	}
 
-	int numBytes = 0;
+	size_t numBytes = 0;
 
 	#if defined( TARGET_OSX ) || defined( TARGET_LINUX )
 
