@@ -46,6 +46,16 @@ using std::string;
 
 #ifdef TARGET_WIN32
 
+#include <windows.h>
+#include <winnls.h>
+
+std::wstring toWString(const std::string_view str) {
+	auto wLen = (size_t)MultiByteToWideChar(CP_ACP, 0, str.data(), -1, NULL, 0);
+    std::wstring wStr(wLen, L'\0');
+    MultiByteToWideChar(CP_ACP, 0, str.data(), -1, &wStr[0], wLen);
+    return wStr;
+}
+
 // needed for serial bus enumeration:
 // 4d36e978-e325-11ce-bfc1-08002be10318}
 DEFINE_GUID (GUID_SERENUM_BUS_ENUMERATOR, 0x4D36E978, 0xE325,
@@ -458,7 +468,7 @@ bool ofSerial::setup(const std::string_view portName, size_t baud, size_t data, 
 		return true;
 
 	#elif defined(TARGET_WIN32)
-		std::vector<char> pn(portName.size() + 10, '\0');
+		std::string pn(portName.size() + 10, '\0');
 		int num;
 		if (sscanf_s(portName.data(), "COM%d", &num) == 1) {
 			snprintf(pn.data(), pn.size(), "\\\\.\\COM%d", num);
@@ -467,6 +477,7 @@ bool ofSerial::setup(const std::string_view portName, size_t baud, size_t data, 
 			strncpy_s(pn.data(), pn.size(), portName.data(), _TRUNCATE);
 		}
 
+		// auto wstr = toWString(pn);
 		hComm = CreateFile(pn.data(), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
 		if (hComm == INVALID_HANDLE_VALUE) {
 			std::cerr << "setup(): unable to open " << portName << std::endl;
@@ -603,7 +614,7 @@ size_t ofSerial::writeBytes(const uint8_t * buffer, size_t length) {
 				return 0;
 			}
 		}
-		return (int)written;
+		return written;
 
 	#else
 
@@ -679,7 +690,7 @@ size_t ofSerial::readBytes(uint8_t * buffer, size_t length){
 			buffer[nRead] = '\0';
 		}
 
-		return (int)nRead;
+		return nRead;
 
 	#else
 
