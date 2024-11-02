@@ -478,7 +478,7 @@ bool ofSerial::setup(const std::string_view portName, size_t baud, size_t data, 
 		}
 
 		// auto wstr = toWString(pn);
-		hComm = CreateFile(pn.data(), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+		hComm = CreateFile(LPCSTR(pn.data()), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
 		if (hComm == INVALID_HANDLE_VALUE) {
 			std::cerr << "setup(): unable to open " << portName << std::endl;
 			return false;
